@@ -3,7 +3,7 @@
  * Plugin Name: Karaage
  * Plugin URI:  https://github.com/TaniyanR/Karaage
  * Description: 過去の公開記事をランダムに選び、一定期間の重複を避けながら専用RSSとして配信します。
- * Version:     1.1.1
+ * Version:     1.2.0
  * Author:      TaniyanR
  * License:     GPL-2.0-or-later
  * Text Domain: karaage
@@ -13,14 +13,20 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'KARAAGE_VERSION', '1.1.1' );
+define( 'KARAAGE_VERSION', '1.2.0' );
+define( 'KARAAGE_OPTION_VERSION', 'karaage_version' );
 define( 'KARAAGE_OPTION_INTERVAL', 'karaage_update_interval' );
 define( 'KARAAGE_OPTION_COOLDOWN', 'karaage_repeat_prevention_days' );
 define( 'KARAAGE_OPTION_CURRENT', 'karaage_current_feed_post_ids' );
 define( 'KARAAGE_OPTION_HISTORY', 'karaage_post_history' );
 define( 'KARAAGE_OPTION_BUILT_AT', 'karaage_feed_built_at' );
 define( 'KARAAGE_OPTION_MIN_AGE', 'karaage_minimum_post_age_days' );
+define( 'KARAAGE_OPTION_FEED_COUNT', 'karaage_feed_item_count' );
 define( 'KARAAGE_CRON_HOOK', 'karaage_refresh_feed_event' );
+
+function karaage_feed_url() {
+	return home_url( '/feed-pickup' );
+}
 
 function karaage_interval_choices() {
 	return array(
@@ -33,13 +39,7 @@ function karaage_interval_choices() {
 }
 
 function karaage_cooldown_choices() {
-	return array(
-		1   => '1日',
-		7   => '7日',
-		30  => '30日',
-		60  => '60日',
-		180 => '180日',
-	);
+	return array( 1 => '1日', 7 => '7日', 30 => '30日', 60 => '60日', 180 => '180日' );
 }
 
 function karaage_min_age_choices() {
@@ -55,6 +55,10 @@ function karaage_min_age_choices() {
 	);
 }
 
+function karaage_feed_count_choices() {
+	return array( 5 => '5件', 10 => '10件', 20 => '20件' );
+}
+
 function karaage_add_cron_schedules( $schedules ) {
 	foreach ( karaage_interval_choices() as $key => $choice ) {
 		$schedules[ 'karaage_' . $key ] = array(
@@ -66,10 +70,31 @@ function karaage_add_cron_schedules( $schedules ) {
 }
 add_filter( 'cron_schedules', 'karaage_add_cron_schedules' );
 
-function karaage_register_feed() {
-	add_feed( 'karaage', 'karaage_render_feed' );
+function karaage_register_endpoint() {
+	add_rewrite_rule( '^feed-pickup/?$', 'index.php?karaage_feed=1', 'top' );
 }
-add_action( 'init', 'karaage_register_feed' );
+add_action( 'init', 'karaage_register_endpoint' );
+
+function karaage_query_vars( $vars ) {
+	$vars[] = 'karaage_feed';
+	return $vars;
+}
+add_filter( 'query_vars', 'karaage_query_vars' );
+
+function karaage_template_redirect() {
+	if ( '1' === (string) get_query_var( 'karaage_feed' ) ) {
+		karaage_render_feed();
+	}
+}
+add_action( 'template_redirect', 'karaage_template_redirect' );
+
+function karaage_disable_canonical_redirect( $redirect_url ) {
+	if ( '1' === (string) get_query_var( 'karaage_feed' ) ) {
+		return false;
+	}
+	return $redirect_url;
+}
+add_filter( 'redirect_canonical', 'karaage_disable_canonical_redirect' );
 
 function karaage_activate() {
 	if ( false === get_option( KARAAGE_OPTION_INTERVAL, false ) ) {
@@ -81,15 +106,33 @@ function karaage_activate() {
 	if ( false === get_option( KARAAGE_OPTION_MIN_AGE, false ) ) {
 		add_option( KARAAGE_OPTION_MIN_AGE, 0 );
 	}
+	if ( false === get_option( KARAAGE_OPTION_FEED_COUNT, false ) ) {
+		add_option( KARAAGE_OPTION_FEED_COUNT, 10 );
+	}
 
 	delete_option( 'karaage_category_ids' );
-
-	karaage_register_feed();
+	update_option( KARAAGE_OPTION_VERSION, KARAAGE_VERSION, false );
+	karaage_register_endpoint();
 	flush_rewrite_rules();
 	karaage_reschedule_event();
 	karaage_generate_feed();
 }
 register_activation_hook( __FILE__, 'karaage_activate' );
+
+function karaage_maybe_upgrade() {
+	if ( KARAAGE_VERSION === get_option( KARAAGE_OPTION_VERSION, '' ) ) {
+		return;
+	}
+	if ( false === get_option( KARAAGE_OPTION_FEED_COUNT, false ) ) {
+		add_option( KARAAGE_OPTION_FEED_COUNT, 10 );
+	}
+	delete_option( 'karaage_category_ids' );
+	karaage_register_endpoint();
+	flush_rewrite_rules();
+	update_option( KARAAGE_OPTION_VERSION, KARAAGE_VERSION, false );
+	karaage_generate_feed();
+}
+add_action( 'init', 'karaage_maybe_upgrade', 20 );
 
 function karaage_deactivate() {
 	wp_clear_scheduled_hook( KARAAGE_CRON_HOOK );
@@ -119,13 +162,14 @@ function karaage_interval_updated( $old_value, $value ) {
 }
 add_action( 'update_option_' . KARAAGE_OPTION_INTERVAL, 'karaage_interval_updated', 10, 2 );
 
-function karaage_feed_filter_updated( $old_value, $value ) {
+function karaage_feed_setting_updated( $old_value, $value ) {
 	if ( $old_value !== $value ) {
 		karaage_generate_feed();
 	}
 }
-add_action( 'update_option_' . KARAAGE_OPTION_COOLDOWN, 'karaage_feed_filter_updated', 10, 2 );
-add_action( 'update_option_' . KARAAGE_OPTION_MIN_AGE, 'karaage_feed_filter_updated', 10, 2 );
+add_action( 'update_option_' . KARAAGE_OPTION_COOLDOWN, 'karaage_feed_setting_updated', 10, 2 );
+add_action( 'update_option_' . KARAAGE_OPTION_MIN_AGE, 'karaage_feed_setting_updated', 10, 2 );
+add_action( 'update_option_' . KARAAGE_OPTION_FEED_COUNT, 'karaage_feed_setting_updated', 10, 2 );
 
 function karaage_prune_history( $history ) {
 	if ( ! is_array( $history ) ) {
@@ -156,7 +200,12 @@ function karaage_generate_feed() {
 		}
 	}
 
-	$count           = max( 1, (int) get_option( 'posts_per_rss', 10 ) );
+	$count_choices = karaage_feed_count_choices();
+	$count         = (int) get_option( KARAAGE_OPTION_FEED_COUNT, 10 );
+	if ( ! isset( $count_choices[ $count ] ) ) {
+		$count = 10;
+	}
+
 	$min_age         = (int) get_option( KARAAGE_OPTION_MIN_AGE, 0 );
 	$min_age_choices = karaage_min_age_choices();
 	if ( ! isset( $min_age_choices[ $min_age ] ) ) {
@@ -229,7 +278,7 @@ function karaage_render_feed() {
 <rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:atom="http://www.w3.org/2005/Atom">
 <channel>
 	<title><?php echo esc_html( get_bloginfo_rss( 'name' ) . ' - Karaage' ); ?></title>
-	<atom:link href="<?php echo esc_url( get_feed_link( 'karaage' ) ); ?>" rel="self" type="application/rss+xml" />
+	<atom:link href="<?php echo esc_url( karaage_feed_url() ); ?>" rel="self" type="application/rss+xml" />
 	<link><?php echo esc_url( home_url( '/' ) ); ?></link>
 	<description><?php echo esc_html( get_bloginfo_rss( 'description' ) ); ?></description>
 	<lastBuildDate><?php echo esc_html( gmdate( 'D, d M Y H:i:s +0000', $built_at ) ); ?></lastBuildDate>
@@ -260,25 +309,32 @@ function karaage_register_settings() {
 	register_setting( 'karaage_settings', KARAAGE_OPTION_COOLDOWN, array( 'type' => 'integer', 'sanitize_callback' => 'karaage_sanitize_cooldown', 'default' => 7 ) );
 	register_setting( 'karaage_settings', KARAAGE_OPTION_INTERVAL, array( 'type' => 'string', 'sanitize_callback' => 'karaage_sanitize_interval', 'default' => '60min' ) );
 	register_setting( 'karaage_settings', KARAAGE_OPTION_MIN_AGE, array( 'type' => 'integer', 'sanitize_callback' => 'karaage_sanitize_min_age', 'default' => 0 ) );
+	register_setting( 'karaage_settings', KARAAGE_OPTION_FEED_COUNT, array( 'type' => 'integer', 'sanitize_callback' => 'karaage_sanitize_feed_count', 'default' => 10 ) );
 }
 add_action( 'admin_init', 'karaage_register_settings' );
 
 function karaage_sanitize_cooldown( $value ) {
-	$value = (int) $value;
+	$value   = (int) $value;
 	$choices = karaage_cooldown_choices();
 	return isset( $choices[ $value ] ) ? $value : 7;
 }
 
 function karaage_sanitize_interval( $value ) {
-	$value = sanitize_key( $value );
+	$value   = sanitize_key( $value );
 	$choices = karaage_interval_choices();
 	return isset( $choices[ $value ] ) ? $value : '60min';
 }
 
 function karaage_sanitize_min_age( $value ) {
-	$value = (int) $value;
+	$value   = (int) $value;
 	$choices = karaage_min_age_choices();
 	return isset( $choices[ $value ] ) ? $value : 0;
+}
+
+function karaage_sanitize_feed_count( $value ) {
+	$value   = (int) $value;
+	$choices = karaage_feed_count_choices();
+	return isset( $choices[ $value ] ) ? $value : 10;
 }
 
 function karaage_handle_manual_refresh() {
@@ -296,10 +352,11 @@ function karaage_settings_page() {
 	if ( ! current_user_can( 'manage_options' ) ) {
 		return;
 	}
-	$cooldown = (int) get_option( KARAAGE_OPTION_COOLDOWN, 7 );
-	$interval = get_option( KARAAGE_OPTION_INTERVAL, '60min' );
-	$min_age  = (int) get_option( KARAAGE_OPTION_MIN_AGE, 0 );
-	$built_at = (int) get_option( KARAAGE_OPTION_BUILT_AT, 0 );
+	$cooldown  = (int) get_option( KARAAGE_OPTION_COOLDOWN, 7 );
+	$interval  = get_option( KARAAGE_OPTION_INTERVAL, '60min' );
+	$min_age   = (int) get_option( KARAAGE_OPTION_MIN_AGE, 0 );
+	$feed_count = (int) get_option( KARAAGE_OPTION_FEED_COUNT, 10 );
+	$built_at  = (int) get_option( KARAAGE_OPTION_BUILT_AT, 0 );
 	?>
 	<div class="wrap">
 		<h1>Karaage</h1>
@@ -319,6 +376,10 @@ function karaage_settings_page() {
 					<td><select id="<?php echo esc_attr( KARAAGE_OPTION_MIN_AGE ); ?>" name="<?php echo esc_attr( KARAAGE_OPTION_MIN_AGE ); ?>"><?php foreach ( karaage_min_age_choices() as $days => $label ) : ?><option value="<?php echo esc_attr( $days ); ?>" <?php selected( $min_age, $days ); ?>><?php echo esc_html( $label ); ?></option><?php endforeach; ?></select><p class="description">例：「30日以上前」なら、公開から30日以上経過した記事だけをRSS候補にします。</p></td>
 				</tr>
 				<tr>
+					<th scope="row"><label for="<?php echo esc_attr( KARAAGE_OPTION_FEED_COUNT ); ?>">RSSに表示する記事数</label></th>
+					<td><select id="<?php echo esc_attr( KARAAGE_OPTION_FEED_COUNT ); ?>" name="<?php echo esc_attr( KARAAGE_OPTION_FEED_COUNT ); ?>"><?php foreach ( karaage_feed_count_choices() as $count => $label ) : ?><option value="<?php echo esc_attr( $count ); ?>" <?php selected( $feed_count, $count ); ?>><?php echo esc_html( $label ); ?></option><?php endforeach; ?></select><p class="description">候補記事が不足している場合は、重複防止ルールを維持したまま取得できた件数だけ表示します。</p></td>
+				</tr>
+				<tr>
 					<th scope="row"><label for="<?php echo esc_attr( KARAAGE_OPTION_INTERVAL ); ?>">RSS更新間隔</label></th>
 					<td><select id="<?php echo esc_attr( KARAAGE_OPTION_INTERVAL ); ?>" name="<?php echo esc_attr( KARAAGE_OPTION_INTERVAL ); ?>"><?php foreach ( karaage_interval_choices() as $key => $choice ) : ?><option value="<?php echo esc_attr( $key ); ?>" <?php selected( $interval, $key ); ?>><?php echo esc_html( $choice['label'] ); ?></option><?php endforeach; ?></select><p class="description">WP-Cronで更新します。アクセスがないサイトでは実行時刻が遅れる場合があります。</p></td>
 				</tr>
@@ -328,11 +389,11 @@ function karaage_settings_page() {
 		<hr>
 		<h2>RSS情報</h2>
 		<table class="widefat striped" style="max-width:900px;"><tbody>
-			<tr><td style="width:220px;"><strong>RSS URL</strong></td><td><code><?php echo esc_html( get_feed_link( 'karaage' ) ); ?></code></td></tr>
-			<tr><td><strong>RSSの記事数</strong></td><td><?php echo esc_html( max( 1, (int) get_option( 'posts_per_rss', 10 ) ) ); ?>件（WordPress「設定 → 表示設定 → RSS/Atom フィードで表示する最新の投稿数」を使用）</td></tr>
+			<tr><td style="width:220px;"><strong>RSS URL</strong></td><td><code><?php echo esc_html( karaage_feed_url() ); ?></code></td></tr>
+			<tr><td><strong>RSSの記事数</strong></td><td><?php echo esc_html( $feed_count ); ?>件</td></tr>
 			<tr><td><strong>最終生成</strong></td><td><?php echo $built_at ? esc_html( wp_date( 'Y-m-d H:i:s', $built_at ) ) : '未生成'; ?></td></tr>
 		</tbody></table>
-		<p><a class="button button-secondary" href="<?php echo esc_url( get_feed_link( 'karaage' ) ); ?>" target="_blank" rel="noopener noreferrer">RSSを開く</a></p>
+		<p><a class="button button-secondary" href="<?php echo esc_url( karaage_feed_url() ); ?>" target="_blank" rel="noopener noreferrer">RSSを開く</a></p>
 		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 			<input type="hidden" name="action" value="karaage_manual_refresh">
 			<?php wp_nonce_field( 'karaage_manual_refresh' ); ?>
