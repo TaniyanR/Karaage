@@ -17,10 +17,10 @@ WordPressの過去記事をランダムに選出し、重複期間・記事の�
 ## RSS URL
 
 ```text
-https://example.com/feed-pickup
+https://example.com/feed-pickup/
 ```
 
-末尾スラッシュなしのURLをKaraageの正式なRSS URLとして使用します。
+末尾スラッシュありのURLをKaraageの正式なRSS URLとして使用します。旧URL（末尾スラッシュなし）はWordPressやサーバーの設定によって正式URLへリダイレクトされるため、RSS取得ツールには正式URLを登録してください。
 
 ## RSSの記事数
 
@@ -69,6 +69,12 @@ WordPress管理画面の「設定 → Karaage」から設定できます。
 - 今すぐRSSを更新
 
 ## バージョン
+
+### 1.2.1
+
+- 専用RSSの正式URLを末尾スラッシュありの `/feed-pickup/` に統一
+- プラグイン更新時に新しい正式URL用のリライトルールを再生成
+- 旧URLは環境により正式URLへリダイレクトされるため、RSS取得ツールには正式URLを登録
 
 ### 1.2.0
 
