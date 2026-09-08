@@ -3,7 +3,7 @@
  * Plugin Name: Karaage – 過去記事ランダムRSS
  * Plugin URI:  https://github.com/TaniyanR/Karaage
  * Description: 過去の公開記事をランダムに選び、一定期間の重複を避けながら専用RSSとして配信するプラグインです。
- * Version:     1.2.0
+ * Version:     1.2.1
  * Author:      TaniyanR
  * License:     GPL-2.0-or-later
  * Text Domain: karaage
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'KARAAGE_VERSION', '1.2.0' );
+define( 'KARAAGE_VERSION', '1.2.1' );
 define( 'KARAAGE_OPTION_VERSION', 'karaage_version' );
 define( 'KARAAGE_OPTION_INTERVAL', 'karaage_update_interval' );
 define( 'KARAAGE_OPTION_COOLDOWN', 'karaage_repeat_prevention_days' );
@@ -24,7 +24,7 @@ define( 'KARAAGE_OPTION_MIN_AGE', 'karaage_minimum_post_age_days' );
 define( 'KARAAGE_OPTION_FEED_COUNT', 'karaage_feed_item_count' );
 define( 'KARAAGE_CRON_HOOK', 'karaage_refresh_feed_event' );
 
-function karaage_feed_url() { return home_url( '/feed-pickup' ); }
+function karaage_feed_url() { return home_url( '/feed-pickup/' ); }
 function karaage_interval_choices() { return array( '10min'=>array('label'=>'10分','seconds'=>10*MINUTE_IN_SECONDS), '30min'=>array('label'=>'30分','seconds'=>30*MINUTE_IN_SECONDS), '60min'=>array('label'=>'60分','seconds'=>HOUR_IN_SECONDS), '3hours'=>array('label'=>'3時間','seconds'=>3*HOUR_IN_SECONDS), '6hours'=>array('label'=>'6時間','seconds'=>6*HOUR_IN_SECONDS) ); }
 function karaage_cooldown_choices() { return array( 1=>'1日', 7=>'7日', 30=>'30日', 60=>'60日', 180=>'180日' ); }
 function karaage_min_age_choices() { return array( 0=>'制限なし', 1=>'1日以上前', 7=>'7日以上前', 30=>'30日以上前', 60=>'60日以上前', 90=>'90日以上前', 180=>'180日以上前', 365=>'365日以上前' ); }
