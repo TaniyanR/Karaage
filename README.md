@@ -70,6 +70,18 @@ WordPress管理画面の「設定 → Karaage」から設定できます。
 
 ## バージョン
 
+### 1.2.3
+
+- RSS出力ループでWordPressのグローバル `$post` を選出記事と同期し、タイトル・リンク・GUID・本文が同じ記事の繰り返しになる不具合を修正
+- 公開日とその他の記事情報が同一記事を参照するよう修正
+- RSS URL、選出条件、重複防止期間、キャッシュ設定は変更なし
+- 1.2.2は未リリースのURL対応作業と区別するため欠番
+
+### 開発用テスト
+
+`php tests/feed-output.php` と `php tests/feed-output.php no-global` で、異なる3記事のタイトル・URL・GUID・本文・画像・著者・公開日と出力順を検証します。PHP CLIとSimpleXMLが必要です。
+WordPressのテンプレートタグのグローバル参照を再現した単体テストであり、本番WordPress全体の結合テストではありません。
+
 ### 1.2.1
 
 - 専用RSSの正式URLを末尾スラッシュありの `/feed-pickup/` に統一
