@@ -3,7 +3,7 @@
  * Plugin Name: Karaage – 過去記事ランダムRSS
  * Plugin URI:  https://github.com/TaniyanR/Karaage
  * Description: 過去の公開記事をランダムに選び、一定期間の重複を避けながら専用RSSとして配信するプラグインです。
- * Version:     1.2.1
+ * Version:     1.2.3
  * Author:      TaniyanR
  * License:     GPL-2.0-or-later
  * Text Domain: karaage
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'KARAAGE_VERSION', '1.2.1' );
+define( 'KARAAGE_VERSION', '1.2.3' );
 define( 'KARAAGE_OPTION_VERSION', 'karaage_version' );
 define( 'KARAAGE_OPTION_INTERVAL', 'karaage_update_interval' );
 define( 'KARAAGE_OPTION_COOLDOWN', 'karaage_repeat_prevention_days' );
@@ -49,6 +49,8 @@ function karaage_generate_feed(){
  $query=new WP_Query($args);$ids=array_map('intval',$query->posts);$now=time();foreach($ids as $id)$history[$id]=$now;update_option(KARAAGE_OPTION_CURRENT,$ids,false);update_option(KARAAGE_OPTION_HISTORY,$history,false);update_option(KARAAGE_OPTION_BUILT_AT,$now,false);return $ids;
 }
 function karaage_render_feed(){
+ // Template tags read the global post; setup_postdata() alone does not assign it.
+ global $post;
  $ids=get_option(KARAAGE_OPTION_CURRENT,array());if(!is_array($ids)||empty($ids))$ids=karaage_generate_feed();$posts=array();if(!empty($ids))$posts=get_posts(array('post_type'=>'post','post_status'=>'publish','post__in'=>array_map('intval',$ids),'orderby'=>'post__in','posts_per_page'=>count($ids),'ignore_sticky_posts'=>true,'no_found_rows'=>true,'suppress_filters'=>false));$built=(int)get_option(KARAAGE_OPTION_BUILT_AT,time());status_header(200);header('Content-Type: '.feed_content_type('rss-http').'; charset='.get_option('blog_charset'),true);echo '<?xml version="1.0" encoding="'.esc_attr(get_option('blog_charset')).'"?'.'>';?>
 <rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title><?php echo esc_html(get_bloginfo_rss('name').' - Karaage'); ?></title><atom:link href="<?php echo esc_url(karaage_feed_url()); ?>" rel="self" type="application/rss+xml"/><link><?php echo esc_url(home_url('/')); ?></link><description><?php echo esc_html(get_bloginfo_rss('description')); ?></description><lastBuildDate><?php echo esc_html(gmdate('D, d M Y H:i:s +0000',$built)); ?></lastBuildDate><language><?php echo esc_html(get_bloginfo_rss('language')); ?></language><?php foreach($posts as $post):setup_postdata($post);?><item><title><?php the_title_rss(); ?></title><link><?php the_permalink_rss(); ?></link><guid isPermaLink="false"><?php the_guid(); ?></guid><pubDate><?php echo esc_html(get_post_time('D, d M Y H:i:s +0000',true,$post)); ?></pubDate><dc:creator><![CDATA[<?php echo esc_html(get_the_author()); ?>]]></dc:creator><description><![CDATA[<?php the_excerpt_rss(); ?>]]></description><content:encoded><![CDATA[<?php echo get_the_content_feed('rss2'); ?>]]></content:encoded></item><?php endforeach;wp_reset_postdata();?></channel></rss><?php exit;
 }

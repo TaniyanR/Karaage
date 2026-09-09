@@ -1,0 +1,21 @@
+name: PHP regression tests
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  feed-output:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax checks
+        run: |
+          php -v
+          php -l karaage.php
+          php -l tests/feed-output.php
+      - name: Distinct posts with existing and absent global post
+        run: |
+          php tests/feed-output.php
+          php tests/feed-output.php no-global
